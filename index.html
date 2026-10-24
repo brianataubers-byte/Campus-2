@@ -291,4 +291,34 @@ button.onclick=()=>{const ids=[...setup.querySelectorAll('.flash-lesson input:ch
 start.parentElement.insertBefore(button,start);
 }
 const obs=new MutationObserver(()=>{if(root.querySelector('.flash-setup')&&!root.querySelector('#auto-generate-flash'))enhance()});obs.observe(root,{childList:true,subtree:false});enhance();
+})();</script><style id="view-mode-style">
+#campusViewToggle{border:1px solid #dfe1e6!important;padding:8px 12px!important;font-weight:650!important;white-space:nowrap}
+#campusViewToggle.view-on{background:#e9f2ff!important;color:#0c66e4!important;border-color:#85b8ff!important}
+body.campus-readonly #note{cursor:default!important;user-select:text!important;-webkit-user-select:text!important;caret-color:transparent!important}
+body.campus-readonly #note:focus{outline:none!important}
+body.campus-readonly #sheet{touch-action:pan-y pan-x!important}
+body.campus-readonly #drawing{pointer-events:none!important}
+body.campus-readonly #insertToggle,body.campus-readonly #insertMenu,body.campus-readonly .editor-wrap>.top.toolbar>.campus-menu{display:none!important}
+body.campus-readonly #note [contenteditable]{pointer-events:none!important}
+</style>
+<script id="view-mode-toggle">(function(){
+const note=document.getElementById('note'),bar=document.querySelector('.editor-wrap>.top.toolbar');if(!note||!bar)return;
+const button=document.createElement('button');button.id='campusViewToggle';button.type='button';bar.prepend(button);
+let readonly=localStorage.getItem('campus2-view-mode')!=='edit';
+function apply(){
+ document.body.classList.toggle('campus-readonly',readonly);
+ note.setAttribute('contenteditable',readonly?'false':'true');
+ note.setAttribute('spellcheck',readonly?'false':'true');
+ document.getElementById('drawing').style.pointerEvents=readonly?'none':'';
+ const sheet=document.getElementById('sheet');sheet.classList.toggle('draw',!readonly&&sheet.classList.contains('draw'));
+ if(readonly){sheet.classList.remove('draw');note.blur();const mode=document.getElementById('type');if(mode)mode.click()}
+ button.textContent=readonly?'👁 Doar vizualizare':'✎ Editare activă';
+ button.classList.toggle('view-on',readonly);
+ button.title=readonly?'Apasă pentru a permite editarea':'Apasă pentru a bloca editarea și a derula cu Apple Pencil';
+ localStorage.setItem('campus2-view-mode',readonly?'view':'edit');
+}
+button.onclick=()=>{readonly=!readonly;apply()};
+const observer=new MutationObserver(()=>{if(readonly&&note.getAttribute('contenteditable')!=='false')note.setAttribute('contenteditable','false')});
+observer.observe(note,{attributes:true,attributeFilter:['contenteditable']});
+apply();
 })();</script></body></html>
