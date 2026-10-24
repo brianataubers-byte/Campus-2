@@ -396,7 +396,7 @@ function restore(r=savedRange){ed.focus();const s=getSelection();if(r&&ed.contai
 function saveNow(){try{storeCurrent();updateToc();$('cfSaved').textContent='Saved';$('cfSaved').title='Saved on this device';return true}catch(e){$('cfSaved').textContent='Save failed';notice('Storage is full or unavailable. Download a backup before closing.');return false}}
 function changed(){ed.dispatchEvent(new Event('input',{bubbles:true}));saveNow();if(typeof resize==='function')resize()}
 function command(name,value){if(readonly())return;restore();document.execCommand(name,false,value);remember();changed()}
-function insert(html){command('insertHTML',html)}
+function insert(html){if(window.CampusContent?.insertBlock)window.CampusContent.insertBlock(html);else command('insertHTML',html)}
 function allPages(){const out=[];function walk(nodes,path=[]){for(const n of nodes){const names=[...path,n.name];if(n.kind==='page')out.push({...n,path:names.join(' / ')});walk(n.children||[],names)}}walk(treeData);return out}
 function pageHref(id){return '?page='+encodeURIComponent(id)}
 function open(id){if(!findNode(id))return;openPage(id);localStorage.setItem('campus2-selected-page',id);$('notesTab').click();const u=new URL(location.href);u.searchParams.set('page',id);history.replaceState(null,'',u);savedRange=null;hideLink();closePicker();$('globalResults').hidden=true;filterTree('')}
@@ -653,7 +653,7 @@ if(window.CampusContent.addControls)window.CampusContent.addControls(node,contex
 context.append(button('Duplicate block',()=>replaceNode(node,node.outerHTML+node.outerHTML)),button('Remove block',()=>{replaceNode(node,'');context.hidden=true}))}
 document.addEventListener('click',e=>{const a=e.target.closest('#note .campus-toc a');if(a){e.preventDefault();e.stopImmediatePropagation();const target=document.getElementById(decodeURIComponent(a.getAttribute('href').slice(1)));target?.closest('details')?.setAttribute('open','');target?.scrollIntoView({behavior:'smooth',block:'start'});return}
 const toc=e.target.closest('#note .campus-toc');if(toc&&!read()){e.preventDefault();e.stopImmediatePropagation();select(toc)}},true);
-ed.addEventListener('click',e=>{if(!e.target.closest('.campus-toc'))select(e.target.closest('h1,h2,h3,h4,h5,h6,.campus-panel,.campus-expand,.campus-layout,.campus-code,.campus-macro,figure.campus-media,.campus-status,time,blockquote,pre,p,ul,ol,table,.campus-decision'))});
+ed.addEventListener('click',e=>{if(!e.target.closest('.campus-toc'))select(e.target.closest('.campus-panel,.campus-expand,.campus-layout,.campus-code,.campus-macro,figure.campus-media,.campus-status,time,.campus-zone')||e.target.closest('h1,h2,h3,h4,h5,h6,blockquote,pre,p,ul,ol,table,.campus-decision'))});
 ed.addEventListener('input',refresh);
 new MutationObserver(()=>{if(read()){context.hidden=true;ed.querySelectorAll('.is-selected').forEach(n=>n.classList.remove('is-selected'))}}).observe(document.body,{attributes:true,attributeFilter:['class']});
 const oldOpen=openPage;openPage=function(id){oldOpen(id);context.hidden=true;selected=null;refresh()};
@@ -662,6 +662,7 @@ refresh();persist();
 })();
 </script>
 <style id="creation-suite-styles">
+.cf-toolbar{overflow-x:auto!important;overflow-y:hidden!important;scrollbar-width:thin}
 .emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:4px}.emoji-grid button{font-size:24px!important;padding:8px!important}
 #note .campus-panel[data-emoji]{border-radius:4px!important}#note .campus-macro .macro-label{font:600 12px/1.6 system-ui;color:#626f86;margin-bottom:8px}
 #note .campus-macro ul{margin:6px 0;padding-left:20px}#note .campus-macro[data-kind=include],#note .campus-macro[data-kind=excerptinclude]{background:white}
@@ -872,11 +873,30 @@ if(!src)throw Error('Only YouTube and Vimeo embeds are supported.');E.insert('<d
 function download(name,text,type='application/json'){const a=document.createElement('a'),url=URL.createObjectURL(new Blob([text],{type}));a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000)}
 function blobBase64(blob){return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(String(r.result).split(',')[1]);r.onerror=()=>reject(r.error);r.readAsDataURL(blob)})}
 $('backup').onclick=async()=>{try{E.saveNow();const storage={};for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('campus2-'))storage[k]=localStorage.getItem(k)}const assets=await assetRequest('readonly',s=>s.getAll()),files=[];for(const a of assets)files.push({id:a.id,name:a.name,type:a.type,size:a.size,page:a.page,base64:await blobBase64(a.blob)});download('campus-backup-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify({format:'campus-backup',version:2,storage,assets:files}));E.notice('Backup downloaded, including attachments.')}catch(err){E.notice('Could not create a complete backup: '+err.message)}};
-$('restoreFile').onchange=async()=>{const file=$('restoreFile').files[0];if(!file)return;try{const data=JSON.parse(await file.text()),storage=data.format==='campus-backup'?data.storage:data;if(!storage||typeof storage!=='object'||Array.isArray(storage))throw Error('Not a Campus backup.');const keys=Object.keys(storage).filter(k=>k.startsWith('campus2-'));if(!keys.length)throw Error('No Campus workspace data found.');if(!confirm('Import this backup? Matching pages will be replaced. Download a backup of your current workspace first.'))return;for(const a of data.assets||[]){if(!a.id||typeof a.base64!=='string')continue;const binary=atob(a.base64),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));await assetRequest('readwrite',s=>s.put({id:a.id,name:a.name,type:a.type,size:a.size,page:a.page,blob:new Blob([bytes],{type:a.type})}))}for(const k of keys)localStorage.setItem(k,String(storage[k]));location.reload()}catch(err){E.notice('Import failed: '+err.message)}finally{$('restoreFile').value=''}};
+$('restoreFile').onchange=async()=>{const file=$('restoreFile').files[0];if(!file)return;try{const data=JSON.parse(await file.text()),storage=data.format==='campus-backup'?data.storage:data.items||data;if(!storage||typeof storage!=='object'||Array.isArray(storage))throw Error('Not a Campus backup.');const keys=Object.keys(storage).filter(k=>k.startsWith('campus2-'));if(!keys.length)throw Error('No Campus workspace data found.');if(!confirm('Import this backup? Matching pages will be replaced. Download a backup of your current workspace first.'))return;for(const a of data.assets||[]){if(!a.id||typeof a.base64!=='string')continue;const binary=atob(a.base64),bytes=Uint8Array.from(binary,c=>c.charCodeAt(0));await assetRequest('readwrite',s=>s.put({id:a.id,name:a.name,type:a.type,size:a.size,page:a.page,blob:new Blob([bytes],{type:a.type})}))}for(const k of keys)localStorage.setItem(k,String(storage[k]));location.reload()}catch(err){E.notice('Import failed: '+err.message)}finally{$('restoreFile').value=''}};
 const oldRefreshAssets=C.refresh;C.refresh=function(){oldRefreshAssets();hydrateAssets()};
 const assetsOpen=openPage;openPage=function(id){assetsOpen(id);hydrateAssets()};
 hydrateAssets();
 
+
+
+C.insertBlock=function(html){
+if(read())return;
+E.restore();const selection=getSelection(),r=selection.rangeCount?selection.getRangeAt(0):null;
+const parsed=document.createElement('div');parsed.innerHTML=html;const first=parsed.firstElementChild;
+const isBlock=first&&/^(DIV|TABLE|SECTION|FIGURE|PRE|BLOCKQUOTE|DETAILS|NAV|UL|OL|HR|P|H[1-6])$/.test(first.tagName);
+const start=r?.startContainer.nodeType===3?r.startContainer.parentElement:r?.startContainer;
+const block=start?.closest('h1,h2,h3,h4,h5,h6,p');
+if(isBlock&&block&&block!==ed&&ed.contains(block)&&block.contains(r.endContainer)){
+const beforeRange=document.createRange();beforeRange.selectNodeContents(block);beforeRange.setEnd(r.startContainer,r.startOffset);
+const afterRange=document.createRange();afterRange.selectNodeContents(block);afterRange.setStart(r.endContainer,r.endOffset);
+const before=block.cloneNode(false),after=block.cloneNode(false);before.append(beforeRange.cloneContents());after.append(afterRange.cloneContents());after.removeAttribute('id');
+const prefix=before.textContent.trim()||before.querySelector('img,input')?before.outerHTML:'';
+const suffix=after.textContent.trim()||after.querySelector('img,input')?after.outerHTML:'';
+const whole=document.createRange();whole.selectNode(block);E.restore(whole);document.execCommand('insertHTML',false,prefix+html+suffix);
+}else document.execCommand('insertHTML',false,html);
+E.remember();C.refresh();C.persist()
+};
 
 function pageOptions(){const value=meta();settings('Page options',[{key:'emoji',label:'Page icon (emoji)'},{key:'labels',label:'Labels (comma separated)'},{key:'status',label:'Page status',type:'select',options:['Draft','In progress','In review','Approved','Done']},{key:'width',label:'Page width',type:'select',options:['centered','wide','full']},{key:'small',label:'Small text',type:'checkbox'},{key:'cover',label:'Cover color (leave blank for none)',placeholder:'#e9f2ff'}],{emoji:value.emoji||'',labels:(value.labels||[]).join(', '),status:value.status||'Draft',width:value.width||'centered',small:!!value.small,cover:value.cover||''},v=>{if(v.cover&&!/^#[0-9a-f]{6}$/i.test(v.cover))throw Error('Use a six-digit hex color, for example #e9f2ff.');saveMeta({...value,...v,labels:v.labels.split(',').map(x=>x.trim()).filter(Boolean)});applyPageOptions();C.refresh()})}
 function applyPageOptions(){const value=meta(),sheet=$('sheet');sheet.dataset.pageWidth=value.width||'centered';sheet.classList.toggle('small-content',!!value.small);let cover=$('campusCover');if(value.cover){if(!cover){cover=document.createElement('div');cover.id='campusCover';ed.before(cover)}cover.style.backgroundColor=value.cover}else cover?.remove();
