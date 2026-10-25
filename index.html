@@ -1091,8 +1091,16 @@ if(values.color){n.dataset.panelColor=values.color;if(!values.preset)n.dataset.p
 if(values.emoji!==undefined){if(values.emoji===''&&n.dataset.emoji)n.dataset.panelHiddenEmoji=n.dataset.emoji;n.dataset.emoji=values.emoji}normalizePanel(n)
 });activePanelId=id;panelMenu='';panelToolsKey='';const updated=activePanel();if(updated)focusPanelText(updated,true);schedulePanelTools()}
 function panelTool(label,text,action){const b=document.createElement('button');b.type='button';b.setAttribute('aria-label',label);b.title=label;b.textContent=text;b.addEventListener('pointerdown',e=>e.preventDefault());b.onclick=action;return b}
+ed.addEventListener('paste',e=>{
+if(read())return;const html=e.clipboardData?.getData('text/html');if(!html?.includes('data-campus-panel-copy'))return;
+const parsed=new DOMParser().parseFromString(html,'text/html'),panel=parsed.querySelector('.campus-panel[data-campus-panel-copy="true"]');if(!panel)return;
+e.preventDefault();e.stopImmediatePropagation();panel.removeAttribute('data-campus-panel-copy');panel.dataset.panelId=uid();
+for(const n of [panel,...panel.querySelectorAll('*')]){if(n.matches('script,style,iframe,object,embed,link,meta,base,form')){n.remove();continue}for(const a of [...n.attributes])if(/^on/i.test(a.name)||a.name==='srcdoc'||a.name==='id'||(/^(href|src|xlink:href|action)$/i.test(a.name)&&/^\s*(javascript|vbscript|data:text\/html):/i.test(a.value)))n.removeAttribute(a.name)}
+const selection=getSelection();if(selection?.rangeCount){const r=selection.getRangeAt(0),element=r.startContainer.nodeType===1?r.startContainer:r.startContainer.parentElement,host=element?.closest('.campus-panel');if(host&&ed.contains(host)){r.setStartAfter(host);r.collapse(true);E.restore(r)}}
+E.remember();E.insert(panel.outerHTML+'<p><br></p>')
+},true);
 async function copyActivePanel(){
-const panel=activePanel();if(!panel)return;const clone=panel.cloneNode(true);clone.dataset.panelId=uid();clone.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));clone.removeAttribute('id');
+const panel=activePanel();if(!panel)return;const clone=panel.cloneNode(true);clone.dataset.campusPanelCopy='true';clone.dataset.panelId=uid();clone.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));clone.removeAttribute('id');
 const html=clone.outerHTML,text=panel.innerText;let copied=false;
 try{if(navigator.clipboard?.write&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([text],{type:'text/plain'})})]);copied=true}}catch{}
 if(!copied){const handle=e=>{e.preventDefault();e.clipboardData.setData('text/html',html);e.clipboardData.setData('text/plain',text)};document.addEventListener('copy',handle);try{copied=document.execCommand('copy')}catch{}finally{document.removeEventListener('copy',handle)}}
