@@ -700,13 +700,97 @@ function pageData(id){const root=document.createElement('div');root.innerHTML=id
 function clean(html){const root=document.createElement('div');root.innerHTML=html;root.querySelectorAll('script,style,object,embed,form,base,meta,link').forEach(n=>n.remove());root.querySelectorAll('*').forEach(n=>{for(const a of [...n.attributes])if(/^on/i.test(a.name)||['srcdoc'].includes(a.name))n.removeAttribute(a.name);if(n.hasAttribute('href')&&!/^(https?:|mailto:|#|\?page=)/i.test(n.getAttribute('href')))n.removeAttribute('href');if(n.hasAttribute('src')&&!/^(https?:|blob:|data:(image|video|audio)\/)/i.test(n.getAttribute('src')))n.removeAttribute('src');if(n.tagName==='IFRAME'&&!/^https:\/\/(www\.youtube-nocookie\.com\/embed\/|player\.vimeo\.com\/video\/)/.test(n.src))n.remove()});return root.innerHTML}
 function fullReplace(html){if(read())return;ed.innerHTML=html;C.refresh();C.persist();C.history?.capture();const r=document.createRange();r.selectNodeContents(ed);r.collapse(false);E.restore(r);E.remember()}
 function blockAtSelection(){const s=getSelection();const el=s.anchorNode?.nodeType===3?s.anchorNode.parentElement:s.anchorNode;return el&&ed.contains(el)?el.closest('h1,h2,h3,h4,h5,h6,p,blockquote,pre,li,div'):null}
-function panelSettings(node=null){const colors=palette.map(c=>[c,c]);settings('Panel',[
-{key:'type',label:'Panel type',type:'select',options:[['','Info'],['tip','Success / tip'],['warning','Warning'],['important','Error / important'],['note-panel','Note'],['custom','Custom']]},
-{key:'emoji',label:'Emoji (leave blank for none)'},{key:'color',label:'Background color',type:'color'}
-],{type:node?['tip','warning','important','note-panel'].find(c=>node.classList.contains(c))||'':'',emoji:node?.dataset.emoji??(node?.firstChild?.nodeType===3?node.firstChild.textContent.trim().split(' ')[0]:'ℹ'),color:node?.style.backgroundColor?rgbHex(node.style.backgroundColor):'#e9f2ff'},v=>{
-const typeColor={'':'#e9f2ff',tip:'#dcfff1',warning:'#fff7d6',important:'#ffeceb','note-panel':'#f3f0ff'};
-const modify=n=>{n.className='campus-panel '+v.type;n.dataset.emoji=v.emoji;n.style.backgroundColor=v.type==='custom'?v.color:typeColor[v.type];n.style.setProperty('background',n.style.backgroundColor,'important');let marker=n.querySelector(':scope > [data-panel-icon]');if(!marker){if(n.firstChild?.nodeType===3)n.firstChild.remove();marker=document.createElement('span');marker.dataset.panelIcon='true';n.prepend(marker)}marker.textContent=v.emoji?v.emoji+' ':''};
-if(node)patch(node,modify);else{const n=document.createElement('div');n.innerHTML='<p>Type here…</p>';modify(n);E.insert(n.outerHTML+'<p><br></p>')}})}
+
+const panelPresets=[
+{id:'info',label:'Info',className:'',color:'#e9f2ff',emoji:'ℹ️'},
+{id:'success',label:'Success',className:'tip',color:'#dcfff1',emoji:'✅'},
+{id:'warning',label:'Warning',className:'warning',color:'#fff7d6',emoji:'⚠️'},
+{id:'error',label:'Error',className:'important',color:'#ffeceb',emoji:'❌'},
+{id:'note',label:'Note',className:'note-panel',color:'#f3f0ff',emoji:'📝'}
+];
+const panelColors=[
+['White','#ffffff'],['Light gray','#f1f2f4'],['Gray','#dfe1e6'],['Light blue','#e9f2ff'],['Blue','#cce0ff'],
+['Light green','#dcfff1'],['Green','#baf3db'],['Light yellow','#fff7d6'],['Yellow','#f8e6a0'],['Light red','#ffeceb'],
+['Red','#ffd2cc'],['Light purple','#f3f0ff'],['Purple','#dfd8fd'],['Light cyan','#e3fafc'],['Cyan','#c6edfb'],
+['Light pink','#ffecf8'],['Pink','#fdd0ec'],['Mint','#e9f9ee'],['Sage','#d3f1dd'],['Peach','#f7e9d9']
+];
+const panelEmojiOptions=[
+['Information','ℹ️'],['Light bulb','💡'],['Check mark','✅'],['Warning','⚠️'],['Cross mark','❌'],['Memo','📝'],
+['Star','⭐'],['Pin','📌'],['Books','📚'],['Graduation cap','🎓'],['Brain','🧠'],['Target','🎯'],
+['Fire','🔥'],['Speech bubble','💬'],['Rocket','🚀'],['Heart','❤️'],['Bell','🔔'],['Puzzle','🧩'],
+['Magnifying glass','🔎'],['Balance','⚖️'],['Calendar','📅'],['Chart','📊'],['Paperclip','📎'],['Sparkles','✨']
+];
+let panelDialog=null,panelState=null,panelTarget=null;
+function firstPanelEmoji(node){
+if(!node)return null;if(node.dataset.emoji!==undefined)return node.dataset.emoji;
+const marker=node.querySelector(':scope > [data-panel-icon]');if(marker)return marker.textContent.trim();
+if(node.firstChild?.nodeType===3)return node.firstChild.textContent.match(/^\s*((?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u)?.[1]||'';
+return ''
+}
+function panelContrast(hex){const values=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255);return values[0]*.299+values[1]*.587+values[2]*.114<.45?'#ffffff':'#172b4d'}
+function paintPanelPicker(){
+if(!panelState)return;
+$('panelCustomColor').value=panelState.color;$('panelHexColor').value=panelState.color;$('panelCustomEmoji').value=panelState.emoji;
+panelDialog.querySelectorAll('[data-panel-preset]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.panelPreset===panelState.preset)));
+panelDialog.querySelectorAll('[data-panel-color]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.panelColor===panelState.color)));
+panelDialog.querySelectorAll('[data-panel-emoji]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.panelEmoji===panelState.emoji)));
+$('panelNoEmoji').setAttribute('aria-pressed',String(panelState.emoji===''));
+const preview=$('panelPreview');preview.style.backgroundColor=panelState.color;preview.style.color=panelContrast(panelState.color);
+$('panelPreviewIcon').textContent=panelState.emoji?panelState.emoji+' ':'';
+$('panelPreviewName').textContent=(panelPresets.find(p=>p.id===panelState.preset)?.label||'Custom')+' panel';
+}
+function createPanelDialog(){
+panelDialog=E.dialog('campusPanelDialog','Panel settings',
+'<form id="panelPickerForm">'+
+'<fieldset><legend>Preset</legend><div id="panelPresetGrid" class="panel-preset-grid"></div></fieldset>'+
+'<fieldset><legend>Background color</legend><div id="panelColorGrid" class="panel-color-grid" role="group" aria-label="Panel background colors"></div>'+
+'<div class="panel-custom-color"><label for="panelCustomColor">Custom color</label><input id="panelCustomColor" type="color" aria-label="Custom panel color">'+
+'<input id="panelHexColor" type="text" aria-label="Panel hex color" placeholder="#e9f2ff" maxlength="7" spellcheck="false"></div></fieldset>'+
+'<fieldset><legend>Emoji</legend><div id="panelEmojiGrid" class="panel-emoji-grid" role="group" aria-label="Panel emoji choices"></div>'+
+'<div class="panel-emoji-extra"><button type="button" id="panelNoEmoji">No emoji</button><label for="panelCustomEmoji">Custom emoji</label><input id="panelCustomEmoji" maxlength="24" placeholder="🙂" aria-label="Custom panel emoji"></div></fieldset>'+
+'<div id="panelPreview" class="panel-preview" aria-label="Panel preview"><span id="panelPreviewIcon"></span><span id="panelPreviewName"></span><p>Your panel content stays unchanged.</p></div>'+
+'<div id="panelPickerError" class="cf-error" role="alert"></div>'+
+'<div class="cf-actions"><button id="panelPickerCancel" type="button">Cancel</button><button type="submit" class="primary">Apply</button></div></form>');
+for(const preset of panelPresets){const b=C.button(preset.label,()=>{panelState={preset:preset.id,color:preset.color,emoji:preset.emoji};paintPanelPicker()});b.dataset.panelPreset=preset.id;b.title=preset.label+' panel';b.setAttribute('aria-label',preset.label+' panel preset');b.innerHTML='<span class="panel-preset-icon" aria-hidden="true">'+preset.emoji+'</span><span>'+preset.label+'</span>';b.style.setProperty('background',preset.color,'important');$('panelPresetGrid').append(b)}
+for(const [name,color]of panelColors){const b=C.button('',()=>{panelState.color=color;panelState.preset='custom';paintPanelPicker()});b.dataset.panelColor=color;b.title=name;b.setAttribute('aria-label',name+' panel background');b.style.setProperty('background',color,'important');$('panelColorGrid').append(b)}
+for(const [name,emoji]of panelEmojiOptions){const b=C.button(emoji,()=>{panelState.emoji=emoji;paintPanelPicker()});b.dataset.panelEmoji=emoji;b.title=name;b.setAttribute('aria-label',name+' emoji');$('panelEmojiGrid').append(b)}
+$('panelNoEmoji').onclick=()=>{panelState.emoji='';paintPanelPicker()};
+$('panelCustomEmoji').oninput=()=>{panelState.emoji=$('panelCustomEmoji').value;paintPanelPicker()};
+$('panelCustomColor').oninput=()=>{panelState.color=$('panelCustomColor').value;panelState.preset='custom';paintPanelPicker()};
+$('panelHexColor').oninput=()=>{const value=$('panelHexColor').value.trim();if(/^#[0-9a-f]{6}$/i.test(value)){panelState.color=value.toLowerCase();panelState.preset='custom';paintPanelPicker();$('panelPickerError').textContent=''}};
+$('panelPickerCancel').onclick=()=>panelDialog.close();
+$('panelPickerForm').onsubmit=e=>{
+e.preventDefault();if(!/^#[0-9a-f]{6}$/i.test($('panelHexColor').value.trim())){$('panelPickerError').textContent='Enter a six-digit hex color, for example #e9f2ff.';return}
+if([...panelState.emoji].length>12){$('panelPickerError').textContent='Choose an emoji or a short combination of emojis.';return}
+const target=panelTarget,state={...panelState};if(target&&!ed.contains(target)){$('panelPickerError').textContent='This panel is no longer on the page. Close this dialog and select it again.';return}
+const apply=n=>{
+n.classList.add('campus-panel');n.classList.remove('tip','warning','important','note-panel','custom');
+const preset=panelPresets.find(p=>p.id===state.preset);if(preset?.className)n.classList.add(preset.className);if(!preset)n.classList.add('custom');
+n.dataset.panelPreset=state.preset;n.dataset.panelColor=state.color;n.dataset.emoji=state.emoji;
+n.style.setProperty('background',state.color,'important');n.style.setProperty('background-color',state.color,'important');n.style.setProperty('color',panelContrast(state.color),'important');
+let marker=n.querySelector(':scope > [data-panel-icon]');
+if(!marker){
+const first=n.firstChild;if(first?.nodeType===3){const match=first.textContent.match(/^\s*(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\u200D\p{Extended_Pictographic})*\s*/u);if(match)first.textContent=first.textContent.slice(match[0].length)}
+marker=document.createElement('span');marker.dataset.panelIcon='true';n.prepend(marker)}
+marker.setAttribute('contenteditable','false');marker.setAttribute('aria-hidden','true');marker.textContent=state.emoji?state.emoji+' ':''
+};
+panelDialog.close();
+if(target)patch(target,apply);else{const n=document.createElement('div');n.innerHTML='<p>Type here…</p>';apply(n);E.insert(n.outerHTML+'<p><br></p>')}
+};
+}
+function panelSettings(node=null,presetId='info'){
+E.remember();if(!panelDialog)createPanelDialog();panelTarget=node;
+const fallback=panelPresets.find(p=>p.id===presetId)||panelPresets[0];
+if(node){
+const oldClass=panelPresets.find(p=>p.className&&node.classList.contains(p.className));
+const id=node.dataset.panelPreset||(node.classList.contains('custom')?'custom':oldClass?.id||'info');
+const preset=panelPresets.find(p=>p.id===id)||fallback;
+let color=node.dataset.panelColor||rgbHex(getComputedStyle(node).backgroundColor);if(!/^#[0-9a-f]{6}$/i.test(color))color=preset.color;
+panelState={preset:id,color:color.toLowerCase(),emoji:firstPanelEmoji(node)??preset.emoji}
+}else panelState={preset:fallback.id,color:fallback.color,emoji:fallback.emoji};
+$('panelPickerError').textContent='';paintPanelPicker();panelDialog.showModal()
+}
+
 function rgbHex(c){if(c.startsWith('#'))return c;const m=c.match(/\d+/g);return m?'#'+m.slice(0,3).map(x=>Number(x).toString(16).padStart(2,'0')).join(''):'#e9f2ff'}
 function statusSettings(node=null){settings('Status',[{key:'text',label:'Status text',required:true},{key:'color',label:'Color',type:'select',options:[['#dfe1e6','Neutral'],['#cce0ff','Blue'],['#baf3db','Green'],['#f8e6a0','Yellow'],['#ffd2cc','Red'],['#dfd8fd','Purple']]}],{text:node?.textContent||'IN PROGRESS',color:node?.dataset.color||'#cce0ff'},v=>{if(node)patch(node,n=>{n.textContent=v.text;n.dataset.color=v.color;n.style.backgroundColor=v.color});else E.insert('<span class="campus-status" data-color="'+v.color+'" style="background:'+v.color+'">'+esc(v.text)+'</span>&nbsp;')})}
 function dateSettings(node=null){settings('Date',[{key:'date',label:'Date',type:'date',required:true}],{date:node?.getAttribute('datetime')||new Date().toLocaleDateString('en-CA')},v=>{const value=new Date(v.date+'T12:00:00');if(Number.isNaN(+value))throw Error('Choose a valid date.');const text=value.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});if(node)patch(node,n=>{n.setAttribute('datetime',v.date);n.textContent=text});else E.insert('<time datetime="'+esc(v.date)+'">'+esc(text)+'</time>&nbsp;')})}
@@ -745,6 +829,10 @@ for(const [label,fn]of [
 const r=handle.getBoundingClientRect();blockMenu.style.left=Math.min(r.left,innerWidth-240)+'px';blockMenu.style.top=Math.min(r.bottom+4,innerHeight-500)+'px';blockMenu.hidden=false}
 document.addEventListener('pointerdown',e=>{if(!blockMenu.contains(e.target)&&e.target!==handle)blockMenu.hidden=true});
 $('paper').addEventListener('scroll',()=>{handle.hidden=true;blockMenu.hidden=true},{passive:true});
+
+[['Info panel','info'],['Tip panel','success'],['Success panel','success'],['Warning panel','warning'],['Important panel','error'],['Error panel','error'],['Note panel','note']].forEach(([title,id])=>register(title,'panel '+id,()=>panelSettings(null,id),panelPresets.find(p=>p.id===id).emoji));
+[['info','info'],['tip','success'],['warning','warning'],['important','error'],['note-panel','note']].forEach(([key,id])=>{const b=$('insertMenu').querySelector('[data-insert="'+key+'"]');if(b)b.onclick=()=>{$('insertMenu').classList.add('hide');panelSettings(null,id)}});
+
 register('Panel','info note warning success custom colors',()=>panelSettings(),'ℹ');register('Status','lozenge label color',()=>statusSettings(),'◼');register('Date','calendar //',()=>dateSettings(),'◷');register('Mention','person @ name',mention,'@');register('Emoji','symbols emoticons',emojiPicker,'☺');register('Layout','columns two three four five',()=>layoutSettings(),'◫');register('Two columns','layout',()=>layoutSettings(),'◫');register('Code block','snippet source code syntax',()=>codeSettings(),'</>');register('Saved block','template reuse',blockTemplate,'▤');
 bar.querySelector('button[aria-label="Emoji"]').onclick=emojiPicker;bar.querySelector('button[aria-label="Two columns"]').onclick=()=>layoutSettings();
 const priorControls=C.addControls;C.addControls=(node,host)=>{priorControls?.(node,host);
@@ -970,4 +1058,31 @@ ed.addEventListener('beforeinput',e=>{if(e.inputType==='historyUndo'||e.inputTyp
 applyPageOptions();refreshMacros();C.refresh();
 })();
 </script>
-</body></html>
+
+<style id="panel-picker-v13">
+#campusPanelDialog{width:min(600px,calc(100vw - 28px))}
+#campusPanelDialog fieldset{border:0;padding:0;margin:18px 0}
+#campusPanelDialog legend{font-size:13px;font-weight:600;color:#44546f;margin-bottom:9px}
+#campusPanelDialog .panel-preset-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}
+#campusPanelDialog .panel-preset-grid button{display:flex;align-items:center;justify-content:center;gap:6px;border:2px solid transparent!important;border-radius:5px!important;padding:8px 6px!important;color:#172b4d!important;font-size:13px!important}
+#campusPanelDialog .panel-preset-icon{font-size:18px}
+#campusPanelDialog button[aria-pressed=true]{outline:2px solid #1868db;outline-offset:2px}
+#campusPanelDialog .panel-color-grid{display:grid;grid-template-columns:repeat(10,30px);gap:9px}
+#campusPanelDialog .panel-color-grid button{width:30px;height:30px;padding:0!important;border:1px solid #b3b9c4!important;border-radius:5px!important;position:relative}
+#campusPanelDialog .panel-color-grid button[aria-pressed=true]:after{content:"✓";color:#172b4d;font-size:16px;font-weight:700}
+#campusPanelDialog .panel-custom-color{display:flex;align-items:center;gap:10px;margin-top:12px}
+#campusPanelDialog .panel-custom-color label{margin:0;font-weight:400;white-space:nowrap}
+#campusPanelDialog input[type=color]{width:38px;height:34px;padding:2px;border:1px solid #b3b9c4;border-radius:4px}
+#campusPanelDialog #panelHexColor{width:110px;font-family:ui-monospace,monospace}
+#campusPanelDialog .panel-emoji-grid{display:grid;grid-template-columns:repeat(12,34px);gap:7px}
+#campusPanelDialog .panel-emoji-grid button{width:34px;height:34px;font-size:22px!important;line-height:1;padding:4px!important;border-radius:5px!important}
+#campusPanelDialog .panel-emoji-extra{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+#campusPanelDialog .panel-emoji-extra label{margin:0;font-weight:400}
+#campusPanelDialog #panelCustomEmoji{width:92px;font-size:20px}
+#campusPanelDialog .panel-preview{padding:12px 16px;border:1px solid #dcdfe4;border-radius:4px;font-size:15px;line-height:1.6}
+#campusPanelDialog .panel-preview p{margin:6px 0 0;font-size:14px}
+#campusPanelDialog #panelPreviewName{font-weight:600}
+#campusPanelDialog .cf-actions{position:sticky;bottom:-24px;background:white;padding:12px 0 0;margin-top:10px}
+@media(max-width:580px){#campusPanelDialog .panel-preset-grid{grid-template-columns:repeat(3,minmax(0,1fr))}#campusPanelDialog .panel-color-grid{grid-template-columns:repeat(10,24px);gap:7px}#campusPanelDialog .panel-color-grid button{width:24px;height:24px}#campusPanelDialog .panel-emoji-grid{grid-template-columns:repeat(8,32px);gap:6px}#campusPanelDialog .panel-emoji-grid button{width:32px;height:32px}}
+@media(max-width:350px){#campusPanelDialog .panel-color-grid{grid-template-columns:repeat(8,24px)}#campusPanelDialog .panel-emoji-grid{grid-template-columns:repeat(6,32px)}}
+</style></body></html>
