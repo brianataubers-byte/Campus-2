@@ -727,6 +727,39 @@ const marker=node.querySelector(':scope > [data-panel-icon]');if(marker)return m
 if(node.firstChild?.nodeType===3)return node.firstChild.textContent.match(/^\s*((?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u)?.[1]||'';
 return ''
 }
+
+function normalizePanel(panel){
+if(panel.closest('[data-generated=true],.campus-toc'))return;
+panel.classList.add('campus-panel');panel.removeAttribute('contenteditable');
+panel.dataset.panelId||=uid();
+let marker=panel.querySelector(':scope > [data-panel-icon]');
+const icon=firstPanelEmoji(panel)||'';
+if(panel.dataset.emoji===undefined)panel.dataset.emoji=icon;
+if(!marker){
+const first=panel.firstChild;
+if(first?.nodeType===3){const match=first.textContent.match(/^\s*(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\u200D\p{Extended_Pictographic})*\s*/u);if(match)first.textContent=first.textContent.slice(match[0].length)}
+marker=document.createElement('span');marker.dataset.panelIcon='true';panel.prepend(marker)
+}
+marker.setAttribute('contenteditable','false');marker.setAttribute('aria-hidden','true');
+const iconText=panel.dataset.emoji?panel.dataset.emoji+' ':'';
+if(marker.textContent!==iconText)marker.textContent=iconText;
+let body=panel.querySelector(':scope > .campus-panel-content');
+if(!body){
+body=document.createElement('div');body.className='campus-panel-content';
+for(const child of [...panel.childNodes])if(child!==marker)body.append(child);
+panel.append(body)
+}
+body.removeAttribute('contenteditable');
+if(!body.childNodes.length)body.innerHTML='<p data-placeholder="Type here…"><br></p>';
+for(const p of body.querySelectorAll('p[data-placeholder]'))p.dataset.empty=String(!p.textContent.trim()&&!p.querySelector('img,input,video,audio,table'))
+}
+function focusPanelText(panel,atEnd=false){
+if(read()||!panel||!ed.contains(panel))return;
+normalizePanel(panel);const body=panel.querySelector(':scope > .campus-panel-content');
+const target=atEnd?body.lastElementChild||body:body.firstElementChild||body;
+const range=document.createRange();range.selectNodeContents(target);range.collapse(!atEnd);E.restore(range);E.remember();C.select(panel)
+}
+
 function panelContrast(hex){const values=hex.slice(1).match(/../g).map(x=>parseInt(x,16)/255);return values[0]*.299+values[1]*.587+values[2]*.114<.45?'#ffffff':'#172b4d'}
 function paintPanelPicker(){
 if(!panelState)return;
@@ -762,20 +795,21 @@ $('panelPickerCancel').onclick=()=>panelDialog.close();
 $('panelPickerForm').onsubmit=e=>{
 e.preventDefault();if(!/^#[0-9a-f]{6}$/i.test($('panelHexColor').value.trim())){$('panelPickerError').textContent='Enter a six-digit hex color, for example #e9f2ff.';return}
 if([...panelState.emoji].length>12){$('panelPickerError').textContent='Choose an emoji or a short combination of emojis.';return}
-const target=panelTarget,state={...panelState};if(target&&!ed.contains(target)){$('panelPickerError').textContent='This panel is no longer on the page. Close this dialog and select it again.';return}
+const target=panelTarget,state={...panelState},panelId=panelTarget?.dataset.panelId||uid();if(target&&!ed.contains(target)){$('panelPickerError').textContent='This panel is no longer on the page. Close this dialog and select it again.';return}
 const apply=n=>{
 n.classList.add('campus-panel');n.classList.remove('tip','warning','important','note-panel','custom');
 const preset=panelPresets.find(p=>p.id===state.preset);if(preset?.className)n.classList.add(preset.className);if(!preset)n.classList.add('custom');
-n.dataset.panelPreset=state.preset;n.dataset.panelColor=state.color;n.dataset.emoji=state.emoji;
+n.dataset.panelId=panelId;n.dataset.panelPreset=state.preset;n.dataset.panelColor=state.color;n.dataset.emoji=state.emoji;
 n.style.setProperty('background',state.color,'important');n.style.setProperty('background-color',state.color,'important');n.style.setProperty('color',panelContrast(state.color),'important');
 let marker=n.querySelector(':scope > [data-panel-icon]');
 if(!marker){
 const first=n.firstChild;if(first?.nodeType===3){const match=first.textContent.match(/^\s*(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:\uFE0F|\u200D\p{Extended_Pictographic})*\s*/u);if(match)first.textContent=first.textContent.slice(match[0].length)}
 marker=document.createElement('span');marker.dataset.panelIcon='true';n.prepend(marker)}
-marker.setAttribute('contenteditable','false');marker.setAttribute('aria-hidden','true');marker.textContent=state.emoji?state.emoji+' ':''
+marker.setAttribute('contenteditable','false');marker.setAttribute('aria-hidden','true');marker.textContent=state.emoji?state.emoji+' ':'';normalizePanel(n)
 };
 panelDialog.close();
-if(target)patch(target,apply);else{const n=document.createElement('div');n.innerHTML='<p>Type here…</p>';apply(n);E.insert(n.outerHTML+'<p><br></p>')}
+if(target)patch(target,apply);else{const n=document.createElement('div');n.innerHTML='<p data-placeholder="Type here…"><br></p>';apply(n);E.insert(n.outerHTML+'<p><br></p>')}
+const updated=[...ed.querySelectorAll('.campus-panel')].find(p=>p.dataset.panelId===panelId);if(updated)focusPanelText(updated,!!target)
 };
 }
 function panelSettings(node=null,presetId='info'){
@@ -1028,6 +1062,24 @@ register('Comment','annotation local feedback',showComments,'💬');register('Pa
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.body.classList.remove('campus-presentation');$('presentationExit')?.remove()}if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='h'&&!document.querySelector('dialog[open]')){e.preventDefault();findReplace()}if(!read()&&ed.contains(document.activeElement)&&e.key==='/'&&getSelection()?.anchorNode?.textContent?.slice(0,getSelection().anchorOffset).endsWith('/')){e.preventDefault();const r=getSelection().getRangeAt(0);r.setStart(r.startContainer,r.startOffset-1);E.restore(r);document.execCommand('delete');dateSettings()}},true);
 const oldOpenOptions=openPage;openPage=function(id){oldOpenOptions(id);applyPageOptions();refreshMacros();hydrateAssets()};
 
+
+function normalizePanels(){ed.querySelectorAll('.campus-panel,.callout').forEach(normalizePanel)}
+const panelRefresh=C.refresh;C.refresh=function(){normalizePanels();panelRefresh()};
+const panelOpen=openPage;openPage=function(id){panelOpen(id);normalizePanels();C.persist()};
+ed.addEventListener('input',()=>{normalizePanels()});
+ed.addEventListener('pointerdown',e=>{
+const panel=e.target.closest('.campus-panel');
+if(!panel||read()||panel.closest('[data-generated=true]'))return;
+const body=panel.querySelector(':scope > .campus-panel-content');
+if(e.target.closest('[data-panel-icon]')||e.target===panel||(e.target===body&&!body.textContent.trim())){e.preventDefault();focusPanelText(panel)}
+});
+ed.addEventListener('click',e=>{
+const panel=e.target.closest('.campus-panel');if(!panel||read()||panel.closest('[data-generated=true]'))return;
+if(e.target.closest('[data-panel-icon]'))focusPanelText(panel);
+C.select(panel)
+});
+normalizePanels();C.persist();
+
 const editHistories=new Map();let historyRestoring=false,pendingCapture=false,lastInputType='';
 function historyHtml(){const root=ed.cloneNode(true);root.querySelectorAll('.is-selected,.selected-table-cell').forEach(n=>{n.classList.remove('is-selected','selected-table-cell');if(!n.className)n.removeAttribute('class')});return root.innerHTML}
 function currentHistory(){let h=editHistories.get(selectedPage);if(!h){h={past:[],present:historyHtml(),future:[],at:0,typing:false};editHistories.set(selectedPage,h)}return h}
@@ -1085,4 +1137,16 @@ applyPageOptions();refreshMacros();C.refresh();
 #campusPanelDialog .cf-actions{position:sticky;bottom:-24px;background:white;padding:12px 0 0;margin-top:10px}
 @media(max-width:580px){#campusPanelDialog .panel-preset-grid{grid-template-columns:repeat(3,minmax(0,1fr))}#campusPanelDialog .panel-color-grid{grid-template-columns:repeat(10,24px);gap:7px}#campusPanelDialog .panel-color-grid button{width:24px;height:24px}#campusPanelDialog .panel-emoji-grid{grid-template-columns:repeat(8,32px);gap:6px}#campusPanelDialog .panel-emoji-grid button{width:32px;height:32px}}
 @media(max-width:350px){#campusPanelDialog .panel-color-grid{grid-template-columns:repeat(8,24px)}#campusPanelDialog .panel-emoji-grid{grid-template-columns:repeat(6,32px)}}
+</style>
+<style id="panel-writing-v14">
+#note .campus-panel{display:grid!important;grid-template-columns:24px minmax(0,1fr)!important;gap:10px!important;align-items:start!important}
+#note .campus-panel>[data-panel-icon]{display:block!important;grid-column:1;grid-row:1;line-height:1.35!important;font-size:20px!important;white-space:nowrap;user-select:none;cursor:text;padding-top:1px}
+#note .campus-panel>.campus-panel-content{grid-column:2;min-width:0;min-height:1.65em;font-size:16px!important;line-height:1.65!important;outline:none;overflow-wrap:anywhere}
+#note .campus-panel>.campus-panel-content>:first-child{margin-top:0!important}
+#note .campus-panel>.campus-panel-content>:last-child{margin-bottom:0!important}
+#note .campus-panel[data-emoji=""]{grid-template-columns:minmax(0,1fr)!important;gap:0!important}
+#note .campus-panel[data-emoji=""]>[data-panel-icon]{display:none!important}
+#note .campus-panel[data-emoji=""]>.campus-panel-content{grid-column:1}
+body:not(.campus-readonly) #note .campus-panel-content p[data-placeholder][data-empty=true]:before{content:attr(data-placeholder);color:#8590a2;pointer-events:none}
+#note .campus-panel .campus-panel-content p{font:inherit}
 </style></body></html>
