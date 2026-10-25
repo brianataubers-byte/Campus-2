@@ -1080,6 +1080,24 @@ C.select(panel)
 });
 normalizePanels();C.persist();
 
+const panelTools=document.createElement('div');panelTools.id='campusPanelTools';panelTools.setAttribute('aria-label','Panel editing controls');document.body.append(panelTools);
+let panelToolsFrame=0;
+function schedulePanelTools(){if(!panelToolsFrame)panelToolsFrame=requestAnimationFrame(drawPanelTools)}
+function drawPanelTools(){
+panelToolsFrame=0;panelTools.replaceChildren();if(read())return;
+const editorRect=ed.getBoundingClientRect(), toolbarBottom=bar.getBoundingClientRect().bottom;
+const panels=[...ed.querySelectorAll('.campus-panel')].filter(n=>!n.closest('[data-generated=true],.campus-toc'));
+panels.forEach((panel,index)=>{
+const rect=panel.getBoundingClientRect();if(rect.bottom<Math.max(toolbarBottom,0)||rect.top>innerHeight||rect.right<0||rect.left>innerWidth)return;
+const top=rect.top+6;if(top<toolbarBottom||top<editorRect.top||top+28>innerHeight)return;
+const button=document.createElement('button');button.type='button';button.textContent='✎ Edit panel';button.setAttribute('aria-label','Edit panel '+(index+1));button.title='Change panel color and emoji';button.style.top=top+'px';button.style.left=Math.max(rect.left+6,Math.min(rect.right-112,innerWidth-118))+'px';
+button.addEventListener('pointerdown',e=>e.preventDefault());button.addEventListener('click',()=>{if(ed.contains(panel)&&!read())panelSettings(panel)});panelTools.append(button)
+})
+}
+new MutationObserver(schedulePanelTools).observe(ed,{subtree:true,childList:true,attributes:true,characterData:true});
+new MutationObserver(schedulePanelTools).observe(document.body,{attributes:true,attributeFilter:['class']});
+window.addEventListener('scroll',schedulePanelTools,true);window.addEventListener('resize',schedulePanelTools);schedulePanelTools();
+
 const editHistories=new Map();let historyRestoring=false,pendingCapture=false,lastInputType='';
 function historyHtml(){const root=ed.cloneNode(true);root.querySelectorAll('.is-selected,.selected-table-cell').forEach(n=>{n.classList.remove('is-selected','selected-table-cell');if(!n.className)n.removeAttribute('class')});return root.innerHTML}
 function currentHistory(){let h=editHistories.get(selectedPage);if(!h){h={past:[],present:historyHtml(),future:[],at:0,typing:false};editHistories.set(selectedPage,h)}return h}
@@ -1149,4 +1167,10 @@ applyPageOptions();refreshMacros();C.refresh();
 #note .campus-panel[data-emoji=""]>.campus-panel-content{grid-column:1}
 body:not(.campus-readonly) #note .campus-panel-content p[data-placeholder][data-empty=true]:before{content:attr(data-placeholder);color:#8590a2;pointer-events:none}
 #note .campus-panel .campus-panel-content p{font:inherit}
+</style><style id="panel-buttons-v15">
+body:not(.campus-readonly) #note .campus-panel{padding-top:44px!important}
+#campusPanelTools{position:fixed;inset:0;pointer-events:none;z-index:35}
+#campusPanelTools button{position:fixed;pointer-events:auto;height:28px;width:104px;padding:3px 8px;border:1px solid #b6c2cf;border-radius:4px;background:#fff;color:#172b4d;font:500 13px/20px Arial,sans-serif;cursor:pointer;box-shadow:0 1px 2px #091e4226}
+#campusPanelTools button:hover{background:#e9f2ff;border-color:#0c66e4;color:#0055cc}
+#campusPanelTools button:focus-visible{outline:2px solid #0c66e4;outline-offset:2px}
 </style></body></html>
