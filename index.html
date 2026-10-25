@@ -1096,6 +1096,9 @@ button.addEventListener('pointerdown',e=>e.preventDefault());button.addEventList
 }
 new MutationObserver(schedulePanelTools).observe(ed,{subtree:true,childList:true,attributes:true,characterData:true});
 new MutationObserver(schedulePanelTools).observe(document.body,{attributes:true,attributeFilter:['class']});
+if(C.context)new MutationObserver(schedulePanelTools).observe(C.context,{subtree:true,childList:true,attributes:true});
+new ResizeObserver(schedulePanelTools).observe(ed);
+document.addEventListener('click',schedulePanelTools);document.addEventListener('keyup',schedulePanelTools);
 window.addEventListener('scroll',schedulePanelTools,true);window.addEventListener('resize',schedulePanelTools);schedulePanelTools();
 
 const editHistories=new Map();let historyRestoring=false,pendingCapture=false,lastInputType='';
@@ -1170,7 +1173,7 @@ body:not(.campus-readonly) #note .campus-panel-content p[data-placeholder][data-
 </style><style id="panel-buttons-v15">
 body:not(.campus-readonly) #note .campus-panel{padding-top:44px!important}
 #campusPanelTools{position:fixed;inset:0;pointer-events:none;z-index:35}
-#campusPanelTools button{position:fixed;pointer-events:auto;height:28px;width:104px;padding:3px 8px;border:1px solid #b6c2cf;border-radius:4px;background:#fff;color:#172b4d;font:500 13px/20px Arial,sans-serif;cursor:pointer;box-shadow:0 1px 2px #091e4226}
+#campusPanelTools button{position:fixed;pointer-events:auto;height:28px;width:104px;padding:3px 8px;border:1px solid #b6c2cf;border-radius:4px;background:#fff!important;color:#172b4d!important;font:500 13px/20px Arial,sans-serif;cursor:pointer;border:1px solid #b6c2cf!important;box-shadow:0 1px 2px #091e4226}
 #campusPanelTools button:hover{background:#e9f2ff;border-color:#0c66e4;color:#0055cc}
 #campusPanelTools button:focus-visible{outline:2px solid #0c66e4;outline-offset:2px}
 </style></body></html>
