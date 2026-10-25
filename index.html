@@ -1063,7 +1063,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape'){document.body.class
 const oldOpenOptions=openPage;openPage=function(id){oldOpenOptions(id);applyPageOptions();refreshMacros();hydrateAssets()};
 
 
-function normalizePanels(){ed.querySelectorAll('.campus-panel,.callout').forEach(normalizePanel)}
+function normalizePanels(){const ids=new Set();ed.querySelectorAll('.campus-panel,.callout').forEach(panel=>{normalizePanel(panel);if(ids.has(panel.dataset.panelId))panel.dataset.panelId=uid();ids.add(panel.dataset.panelId)})}
 const panelRefresh=C.refresh;C.refresh=function(){normalizePanels();panelRefresh()};
 const panelOpen=openPage;openPage=function(id){panelOpen(id);normalizePanels();C.persist()};
 ed.addEventListener('input',()=>{normalizePanels()});
@@ -1091,6 +1091,14 @@ if(values.color){n.dataset.panelColor=values.color;if(!values.preset)n.dataset.p
 if(values.emoji!==undefined){if(values.emoji===''&&n.dataset.emoji)n.dataset.panelHiddenEmoji=n.dataset.emoji;n.dataset.emoji=values.emoji}normalizePanel(n)
 });activePanelId=id;panelMenu='';panelToolsKey='';const updated=activePanel();if(updated)focusPanelText(updated,true);schedulePanelTools()}
 function panelTool(label,text,action){const b=document.createElement('button');b.type='button';b.setAttribute('aria-label',label);b.title=label;b.textContent=text;b.addEventListener('pointerdown',e=>e.preventDefault());b.onclick=action;return b}
+async function copyActivePanel(){
+const panel=activePanel();if(!panel)return;const clone=panel.cloneNode(true);clone.dataset.panelId=uid();clone.querySelectorAll('[id]').forEach(n=>n.removeAttribute('id'));clone.removeAttribute('id');
+const html=clone.outerHTML,text=panel.innerText;let copied=false;
+try{if(navigator.clipboard?.write&&window.ClipboardItem){await navigator.clipboard.write([new ClipboardItem({'text/html':new Blob([html],{type:'text/html'}),'text/plain':new Blob([text],{type:'text/plain'})})]);copied=true}}catch{}
+if(!copied){const handle=e=>{e.preventDefault();e.clipboardData.setData('text/html',html);e.clipboardData.setData('text/plain',text)};document.addEventListener('copy',handle);try{copied=document.execCommand('copy')}catch{}finally{document.removeEventListener('copy',handle)}}
+panelMenu='';panelToolsKey='';schedulePanelTools();E.notice(copied?'Panel copied. Paste it with Ctrl+V.':'Could not copy. Select the panel and press Ctrl+C.')
+}
+function panelMenuAction(label,path,action){const b=panelTool(label,'',action);b.setAttribute('role','menuitem');b.innerHTML='<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+path+'</svg><span>'+label+'</span>';return b}
 function togglePanelMenu(name){panelMenu=panelMenu===name?'':name;panelToolsKey='';schedulePanelTools()}
 function drawPanelTools(){panelToolsFrame=0;const panel=activePanel();if(read()||!panel){panelTools.replaceChildren();panelToolsKey='';if(document.body.classList.contains('campus-panel-active'))document.body.classList.remove('campus-panel-active');return}
 const rect=panel.getBoundingClientRect(),topLimit=Math.max(bar.getBoundingClientRect().bottom,0);
@@ -1104,8 +1112,9 @@ if(panelMenu){const menu=document.createElement('div');menu.className='panel-flo
 if(panelMenu==='preset')for(const p of panelPresets)menu.append(panelTool(p.label+' panel preset',p.emoji+' '+p.label,()=>changeActivePanel({preset:p.id,color:p.color,emoji:p.emoji})));
 if(panelMenu==='emoji')for(const [name,emoji]of panelEmojiOptions)menu.append(panelTool(name+' emoji',emoji,()=>changeActivePanel({emoji})));
 if(panelMenu==='color')for(const [name,hex]of panelColors){const b=panelTool(name+' panel background','',()=>changeActivePanel({color:hex}));b.style.setProperty('background',hex,'important');menu.append(b)}
-if(panelMenu==='more')menu.append(panelTool('All panel settings','Panel settings…',()=>{panelMenu='';panelSettings(activePanel());panelToolsKey='';schedulePanelTools()}),panelTool('Remove panel','Remove panel',()=>{const n=activePanel();setActivePanel(null);if(n)C.replaceNode(n,'')}));panelTools.append(menu)
+if(panelMenu==='more'){menu.classList.add('panel-more-menu');menu.setAttribute('role','menu');menu.setAttribute('aria-label','Panel actions');menu.append(panelMenuAction('Copy','<rect x="4" y="3" width="13" height="15" rx="2"/><path d="M8 21h10a3 3 0 0 0 3-3V8"/>',copyActivePanel),panelMenuAction('Delete','<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"/>',()=>{const n=activePanel();setActivePanel(null);if(n){C.replaceNode(n,'');E.notice('Panel deleted. Use Undo to restore it.')}}))}panelTools.append(menu)
 }}
+const moreButton=panelTools.querySelector('[aria-label="More panel options"]');if(moreButton){moreButton.setAttribute('aria-haspopup','menu');moreButton.setAttribute('aria-expanded',String(panelMenu==='more'));moreButton.classList.toggle('panel-menu-open',panelMenu==='more')}
 const width=Math.min(348,innerWidth-24);panelTools.style.width=width+'px';panelTools.style.left=Math.max(12,Math.min(rect.left+(rect.width-width)/2,innerWidth-width-12))+'px';const height=panelTools.getBoundingClientRect().height;let top=rect.bottom+10;if(top+height>innerHeight-12)top=rect.top-height-10;if(top<topLimit+6)top=Math.min(Math.max(topLimit+6,rect.bottom+10),innerHeight-height-12);panelTools.style.top=top+'px'
 }
 const selectPanelBase=C.select;C.select=function(node){selectPanelBase(node);setActivePanel(node?.closest('.campus-panel'))};
@@ -1201,4 +1210,10 @@ body.campus-panel-active #contentContext{display:none!important}
 #campusPanelTools .panel-floating-menu>button{justify-content:flex-start}
 #campusPanelTools .panel-floating-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
 #campusPanelTools .panel-floating-grid>button{min-height:34px;justify-content:center;border:1px solid #091e4226!important;font-size:20px}
+</style><style id="panel-actions-v17">
+#campusPanelTools{overflow:visible}
+#campusPanelTools .panel-more-menu{position:absolute;bottom:calc(100% + 6px);right:6px;width:228px;box-sizing:border-box;padding:6px 0;margin:0;gap:0;overflow:visible;border-radius:7px}
+#campusPanelTools .panel-more-menu>button{width:100%;min-height:48px;padding:10px 16px!important;border-radius:0;gap:20px;font-size:16px!important;line-height:24px!important}
+#campusPanelTools .panel-more-menu svg{flex:none}
+#campusPanelTools .panel-menu-open{background:#e9f2ff!important;color:#0c66e4!important}
 </style></body></html>
