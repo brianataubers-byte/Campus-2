@@ -1081,25 +1081,42 @@ C.select(panel)
 normalizePanels();C.persist();
 
 const panelTools=document.createElement('div');panelTools.id='campusPanelTools';panelTools.setAttribute('aria-label','Panel editing controls');document.body.append(panelTools);
-let panelToolsFrame=0;
+let panelToolsFrame=0,activePanelId='',panelMenu='',panelToolsKey='';
+function activePanel(){return [...ed.querySelectorAll('.campus-panel')].find(n=>n.dataset.panelId===activePanelId)}
+function setActivePanel(node){const id=node?.dataset.panelId||'';if(id!==activePanelId){activePanelId=id;panelMenu='';panelToolsKey=''}document.body.classList.toggle('campus-panel-active',!!id&&!read());schedulePanelTools()}
 function schedulePanelTools(){if(!panelToolsFrame)panelToolsFrame=requestAnimationFrame(drawPanelTools)}
-function drawPanelTools(){
-panelToolsFrame=0;panelTools.replaceChildren();if(read())return;
-const editorRect=ed.getBoundingClientRect(), toolbarBottom=bar.getBoundingClientRect().bottom;
-const panels=[...ed.querySelectorAll('.campus-panel')].filter(n=>!n.closest('[data-generated=true],.campus-toc'));
-panels.forEach((panel,index)=>{
-const rect=panel.getBoundingClientRect();if(rect.bottom<Math.max(toolbarBottom,0)||rect.top>innerHeight||rect.right<0||rect.left>innerWidth)return;
-const top=rect.top+6;if(top<toolbarBottom||top<editorRect.top||top+28>innerHeight)return;
-const button=document.createElement('button');button.type='button';button.textContent='✎ Edit panel';button.setAttribute('aria-label','Edit panel '+(index+1));button.title='Change panel color and emoji';button.style.top=top+'px';button.style.left=Math.max(rect.left+6,Math.min(rect.right-112,innerWidth-118))+'px';
-button.addEventListener('pointerdown',e=>e.preventDefault());button.addEventListener('click',()=>{if(ed.contains(panel)&&!read())panelSettings(panel)});panelTools.append(button)
-})
+function changeActivePanel(values){const node=activePanel();if(!node)return;const id=node.dataset.panelId;patch(node,n=>{
+if(values.preset){n.classList.remove('tip','warning','important','note-panel','custom');const preset=panelPresets.find(p=>p.id===values.preset);if(preset?.className)n.classList.add(preset.className);n.dataset.panelPreset=values.preset}
+if(values.color){n.dataset.panelColor=values.color;if(!values.preset)n.dataset.panelPreset='custom';n.style.setProperty('background',values.color,'important');n.style.setProperty('background-color',values.color,'important');n.style.setProperty('color',panelContrast(values.color),'important')}
+if(values.emoji!==undefined)n.dataset.emoji=values.emoji;normalizePanel(n)
+});activePanelId=id;panelMenu='';panelToolsKey='';const updated=activePanel();if(updated)focusPanelText(updated,true);schedulePanelTools()}
+function panelTool(label,text,action){const b=document.createElement('button');b.type='button';b.setAttribute('aria-label',label);b.title=label;b.textContent=text;b.addEventListener('pointerdown',e=>e.preventDefault());b.onclick=action;return b}
+function togglePanelMenu(name){panelMenu=panelMenu===name?'':name;panelToolsKey='';schedulePanelTools()}
+function drawPanelTools(){panelToolsFrame=0;const panel=activePanel();if(read()||!panel){panelTools.replaceChildren();panelToolsKey='';if(document.body.classList.contains('campus-panel-active'))document.body.classList.remove('campus-panel-active');return}
+const rect=panel.getBoundingClientRect(),topLimit=Math.max(bar.getBoundingClientRect().bottom,0);
+if(rect.bottom<topLimit||rect.top>innerHeight){panelTools.hidden=true;return}panelTools.hidden=false;
+const color=panel.dataset.panelColor||rgbHex(getComputedStyle(panel).backgroundColor),icon=panel.dataset.emoji||'',preset=panelPresets.find(p=>p.id===panel.dataset.panelPreset)||panelPresets.find(p=>p.className&&panel.classList.contains(p.className))||panelPresets[0];
+const key=[activePanelId,color,icon,preset.id,panelMenu].join('|');if(key!==panelToolsKey){panelToolsKey=key;panelTools.replaceChildren();
+const toolbar=document.createElement('div');toolbar.className='panel-floating-bar';toolbar.setAttribute('role','toolbar');toolbar.setAttribute('aria-label','Panel formatting');
+toolbar.append(panelTool('Panel type',preset.emoji+' '+(panel.dataset.panelPreset==='custom'?'Custom':preset.label)+' ⌄',()=>togglePanelMenu('preset')),panelTool('Change panel emoji','☺+',()=>togglePanelMenu('emoji')),panelTool(icon?'Hide panel emoji':'Show panel emoji',icon?'◉̸':'◉',()=>changeActivePanel({emoji:icon?'':preset.emoji})));
+const swatch=panelTool('Panel background color','⌄',()=>togglePanelMenu('color'));const chip=document.createElement('span');chip.className='panel-floating-swatch';chip.style.background=color;swatch.prepend(chip);toolbar.append(swatch,panelTool('More panel options','•••',()=>togglePanelMenu('more')));panelTools.append(toolbar);
+if(panelMenu){const menu=document.createElement('div');menu.className='panel-floating-menu '+(panelMenu==='color'||panelMenu==='emoji'?'panel-floating-grid':'');menu.setAttribute('role','group');menu.setAttribute('aria-label','Panel '+panelMenu+' options');
+if(panelMenu==='preset')for(const p of panelPresets)menu.append(panelTool(p.label+' panel preset',p.emoji+' '+p.label,()=>changeActivePanel({preset:p.id,color:p.color,emoji:p.emoji})));
+if(panelMenu==='emoji')for(const [name,emoji]of panelEmojiOptions)menu.append(panelTool(name+' emoji',emoji,()=>changeActivePanel({emoji})));
+if(panelMenu==='color')for(const [name,hex]of panelColors){const b=panelTool(name+' panel background','',()=>changeActivePanel({color:hex}));b.style.setProperty('background',hex,'important');menu.append(b)}
+if(panelMenu==='more')menu.append(panelTool('All panel settings','Panel settings…',()=>{panelMenu='';panelSettings(activePanel());panelToolsKey='';schedulePanelTools()}),panelTool('Remove panel','Remove panel',()=>{const n=activePanel();setActivePanel(null);if(n)C.replaceNode(n,'')}));panelTools.append(menu)
+}}
+const width=Math.min(348,innerWidth-24);panelTools.style.width=width+'px';panelTools.style.left=Math.max(12,Math.min(rect.left+(rect.width-width)/2,innerWidth-width-12))+'px';const height=panelTools.getBoundingClientRect().height;let top=rect.bottom+10;if(top+height>innerHeight-12)top=rect.top-height-10;if(top<topLimit+6)top=Math.min(Math.max(topLimit+6,rect.bottom+10),innerHeight-height-12);panelTools.style.top=top+'px'
 }
+const selectPanelBase=C.select;C.select=function(node){selectPanelBase(node);setActivePanel(node?.closest('.campus-panel'))};
+document.addEventListener('pointerdown',e=>{if(e.target.closest('#campusPanelTools,dialog'))return;setActivePanel(e.target.closest('#note .campus-panel'))});
+ed.addEventListener('click',e=>setActivePanel(e.target.closest('.campus-panel')));
+document.addEventListener('selectionchange',()=>{if(document.activeElement?.closest('#campusPanelTools,dialog'))return;const selection=getSelection(),node=selection?.anchorNode;const element=node?.nodeType===1?node:node?.parentElement;if(element&&ed.contains(element))setActivePanel(element.closest('.campus-panel'))});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]')){if(panelMenu){panelMenu='';panelToolsKey='';schedulePanelTools()}else setActivePanel(null)}});
 new MutationObserver(schedulePanelTools).observe(ed,{subtree:true,childList:true,attributes:true,characterData:true});
 new MutationObserver(schedulePanelTools).observe(document.body,{attributes:true,attributeFilter:['class']});
 if(C.context)new MutationObserver(schedulePanelTools).observe(C.context,{subtree:true,childList:true,attributes:true});
-new ResizeObserver(schedulePanelTools).observe(ed);
-document.addEventListener('click',schedulePanelTools);document.addEventListener('keyup',schedulePanelTools);
-window.addEventListener('scroll',schedulePanelTools,true);window.addEventListener('resize',schedulePanelTools);schedulePanelTools();
+new ResizeObserver(schedulePanelTools).observe(ed);document.addEventListener('click',schedulePanelTools);document.addEventListener('keyup',schedulePanelTools);window.addEventListener('scroll',schedulePanelTools,true);window.addEventListener('resize',schedulePanelTools);schedulePanelTools();
 
 const editHistories=new Map();let historyRestoring=false,pendingCapture=false,lastInputType='';
 function historyHtml(){const root=ed.cloneNode(true);root.querySelectorAll('.is-selected,.selected-table-cell').forEach(n=>{n.classList.remove('is-selected','selected-table-cell');if(!n.className)n.removeAttribute('class')});return root.innerHTML}
@@ -1170,10 +1187,18 @@ applyPageOptions();refreshMacros();C.refresh();
 #note .campus-panel[data-emoji=""]>.campus-panel-content{grid-column:1}
 body:not(.campus-readonly) #note .campus-panel-content p[data-placeholder][data-empty=true]:before{content:attr(data-placeholder);color:#8590a2;pointer-events:none}
 #note .campus-panel .campus-panel-content p{font:inherit}
-</style><style id="panel-buttons-v15">
-body:not(.campus-readonly) #note .campus-panel{padding-top:44px!important}
-#campusPanelTools{position:fixed;inset:0;pointer-events:none;z-index:35}
-#campusPanelTools button{position:fixed;pointer-events:auto;height:28px;width:104px;padding:3px 8px;border:1px solid #b6c2cf;border-radius:4px;background:#fff!important;color:#172b4d!important;font:500 13px/20px Arial,sans-serif;cursor:pointer;border:1px solid #b6c2cf!important;box-shadow:0 1px 2px #091e4226}
-#campusPanelTools button:hover{background:#e9f2ff;border-color:#0c66e4;color:#0055cc}
-#campusPanelTools button:focus-visible{outline:2px solid #0c66e4;outline-offset:2px}
+</style><style id="panel-floating-v16">
+body.campus-panel-active #contentContext{display:none!important}
+#campusPanelTools{position:fixed;z-index:90;pointer-events:none;font:14px Arial,sans-serif}
+#campusPanelTools:empty,#campusPanelTools[hidden]{display:none!important}
+#campusPanelTools .panel-floating-bar{display:flex;align-items:center;justify-content:space-between;min-height:48px;padding:2px 6px;border:1px solid #dfe1e6;border-radius:7px;background:#fff;box-shadow:0 6px 16px #091e4230;pointer-events:auto}
+#campusPanelTools button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:36px;padding:6px 9px;border:0!important;border-radius:4px;background:transparent!important;color:#44546f!important;font:14px/20px Arial,sans-serif;cursor:pointer;pointer-events:auto;white-space:nowrap}
+#campusPanelTools button:hover,#campusPanelTools button:focus-visible{background:#f1f2f4!important;outline:2px solid transparent}
+#campusPanelTools button:focus-visible{outline-color:#0c66e4}
+#campusPanelTools .panel-floating-bar>button:last-child{border-left:1px solid #dfe1e6!important;border-radius:0;margin-left:3px}
+.panel-floating-swatch{display:inline-block;width:18px;height:18px;border:1px solid #091e4226;border-radius:4px}
+#campusPanelTools .panel-floating-menu{pointer-events:auto;margin-top:6px;padding:8px;background:#fff;border:1px solid #dfe1e6;border-radius:7px;box-shadow:0 6px 16px #091e4230;display:flex;flex-direction:column;gap:3px;max-height:240px;overflow:auto}
+#campusPanelTools .panel-floating-menu>button{justify-content:flex-start}
+#campusPanelTools .panel-floating-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:7px}
+#campusPanelTools .panel-floating-grid>button{min-height:34px;justify-content:center;border:1px solid #091e4226!important;font-size:20px}
 </style></body></html>
