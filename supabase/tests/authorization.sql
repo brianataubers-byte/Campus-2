@@ -12,6 +12,7 @@ select set_config('campus_test.invite',(public.campus_create_link(current_settin
 select set_config('campus_test.guest',(public.campus_create_link(current_setting('campus_test.workspace')::uuid,'guest',1)->>'token'),true);
 do $$begin
  begin perform public.campus_save_document(current_setting('campus_test.workspace')::uuid,1,'{"items":{},"files":[]}');raise exception 'Missing format accepted';exception when invalid_parameter_value then null;end;
+ begin perform public.campus_save_document(current_setting('campus_test.workspace')::uuid,1,jsonb_build_object('format',1,'items',jsonb_build_object(),'files',jsonb_build_array(jsonb_build_object('id','bad','path',current_setting('campus_test.workspace')||'/../other/file'))));raise exception 'Attachment path traversal accepted';exception when invalid_parameter_value then null;end;
  begin perform public.campus_set_member_role(current_setting('campus_test.workspace')::uuid,current_setting('campus_test.owner')::uuid,'remove');raise exception 'Owner removed';exception when insufficient_privilege then null;end;
 end $$;
 select set_config('request.jwt.claim.sub',current_setting('campus_test.viewer'),true);
