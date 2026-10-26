@@ -9,7 +9,7 @@ Deno.serve(async req=>{
  const admin=createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,{auth:{persistSession:false,autoRefreshToken:false}});
  const {data,error}=await admin.rpc('campus_guest_read',{p_token:body.token});if(error||!data)throw Error('Share link is expired or revoked');
  const ttl=Math.max(1,Math.min(300,Math.floor((Date.parse(data.expires_at)-Date.now())/1000)));
- const files=data.payload.files||[];for(const file of files){if(typeof file.path!=='string'||!file.path.startsWith(data.workspace_id+'/'))throw Error('Invalid attachment');const signed=await admin.storage.from('campus-files').createSignedUrl(file.path,ttl);if(signed.error)throw Error('Attachment not available');file.signedUrl=signed.data.signedUrl}
+ const files=data.payload.files||[];for(const file of files){if(typeof file.path!=='string'||!new RegExp('^'+data.workspace_id+'/[A-Za-z0-9_-]+$').test(file.path))throw Error('Invalid attachment');const signed=await admin.storage.from('campus-files').createSignedUrl(file.path,ttl);if(signed.error)throw Error('Attachment not available');file.signedUrl=signed.data.signedUrl}
  return new Response(JSON.stringify(data),{headers});
  }catch{return new Response(JSON.stringify({error:'Linkul nu este valid, a expirat sau a fost revocat.'}),{status:403,headers})}
 });
