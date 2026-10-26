@@ -62,7 +62,8 @@ declare uid uuid:=campus_private.verified_user();rev bigint;begin
  if jsonb_typeof(p_payload)<>'object' or p_payload->>'format' is distinct from '1' or jsonb_typeof(p_payload->'items') is distinct from 'object' or jsonb_typeof(p_payload->'files') is distinct from 'array' then raise exception 'Invalid Campus document.' using errcode='22023';end if;
  if octet_length(p_payload::text)>16777216 then raise exception 'Notes exceed the 16 MB workspace document limit; attachments belong in file storage.' using errcode='22023';end if;
  if exists(select 1 from jsonb_each(p_payload->'items') item where item.key !~ '^campus2-(tree$|page-|strokes-|flashcards-|meta-|comments?-|published-|versions-|block-templates$)' or jsonb_typeof(item.value)<>'string') then raise exception 'Invalid document key.' using errcode='22023';end if;
- if exists(select 1 from jsonb_array_elements(p_payload->'files') f where jsonb_typeof(f)<>'object' or coalesce(f->>'path','') not like p_workspace::text||'/%' or coalesce(f->>'id','')='') then raise exception 'Invalid attachment manifest.' using errcode='22023';end if;
+ if jsonb_array_length(p_payload->'files')>1000 then raise exception 'Too many attachments.' using errcode='22023';end if;
+ if exists(select 1 from jsonb_array_elements(p_payload->'files') f where jsonb_typeof(f)<>'object' or coalesce(f->>'path','') !~ ('^'||p_workspace::text||'/[A-Za-z0-9_-]+$') or coalesce(f->>'id','')='') then raise exception 'Invalid attachment manifest.' using errcode='22023';end if;
  update public.campus_documents set payload=p_payload,revision=revision+1,updated_at=now(),updated_by=uid where workspace_id=p_workspace and revision=p_expected_revision returning revision into rev;
  if rev is null then raise exception 'Another device has saved a newer version.' using errcode='40001';end if;return rev;
 end $$;
